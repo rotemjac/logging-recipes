@@ -1,0 +1,49 @@
+
+servers=[
+  {:hostname => "server", :box => "centos/7", :box_url => "your-local-path" , :ip => "192.168.11.11" , :ssh_port => "2511" , :provision_script => "./scripts/server_scripts/main.sh"},
+  {:hostname => "client", :box => "centos/7", :box_url => "your-local-path" , :ip => "192.168.11.22" , :ssh_port => "2522" , :provision_script => "./scripts/clients_scripts/main.sh"},
+  #{:hostname => "net3",:ip => "192.168.33.11" , :ssh_port => "2033"}
+]
+
+first_vm = servers[0][:hostname]
+
+Vagrant.configure(2) do |config|
+    servers.each do |machine|
+        config.vm.define machine[:hostname] do |node|
+            node.vm.box = machine[:box]
+            node.vm.box_url = machine[:box_url]
+
+            node.vm.hostname = machine[:hostname]
+
+            node.vm.network "private_network", ip: machine[:ip]
+            node.vm.network "forwarded_port", guest: 22, host: machine[:ssh_port], id: "ssh"
+
+            node.vm.provision "shell", path: "./scripts/common_init_script.sh"
+            node.vm.provision "shell", path: machine[:provision_script]
+            node.vm.provision "shell", inline: "cat /etc/rsyslog.conf                     >  /vagrant/output.txt"
+            node.vm.provision "shell", inline: "cat ### ss -tulnp | grep 'rsyslog': ###   >> /vagrant/output.txt"
+            node.vm.provision "shell", inline: "sudo ss -tulnp | grep 'rsyslog'           >> /vagrant/output.txt"
+
+
+
+            # First of all (and before the first machine is UP) - create destination folder
+            node.trigger.before :up do |trigger|
+                trigger.only_on = first_vm
+                trigger.run = {inline: "mkdir -p ./outputs/"}
+            end
+
+            # Build the scp command to run on guest
+            private_key_path = ".vagrant/machines/#{machine[:hostname]}/virtualbox/private_key"
+            remote_vagrant_path = "vagrant@127.0.0.1:/vagrant"
+            scp_command  = "scp -o StrictHostKeyChecking=no -i #{private_key_path} -P #{machine[:ssh_port]} #{remote_vagrant_path}/output.txt  ./outputs/#{machine[:hostname]}.txt"
+
+            node.trigger.after :up do |trigger|
+                trigger.run = {inline: scp_command}
+            end
+
+        end
+    end
+end
+
+
+
