@@ -1,0 +1,40 @@
+
+os = "centos"
+box ="centos/7"
+
+solution_name = "syslog-ng"
+solution_config_file = "/etc/syslog-ng/syslog-ng.conf"
+
+scripts_prefix = "./scripts"
+box_url = "/home/rotem/workspaces/playground/vagrant/boxes/centos7.box"
+
+servers=[
+  {
+   :hostname => "syslog-server", :box => "#{box}", :box_url => "#{box_url}" ,
+   :ip => "192.168.11.11"  , :provision_script => "#{scripts_prefix}/server_scripts/main.sh"
+  },
+
+  {
+   :hostname => "syslog-client", :box => "#{box}", :box_url => "#{box_url}" ,
+   :ip => "172.168.11.12"  , :provision_script => "#{scripts_prefix}/clients_scripts/main.sh"
+   }
+]
+
+Vagrant.configure(2) do |config|
+    servers.each do |machine|
+        config.vm.define machine[:hostname] do |node|
+            node.vm.box = machine[:box]
+            node.vm.box_url  = machine[:box_url]
+            node.vm.hostname = machine[:hostname]
+            node.vm.network "private_network", ip: machine[:ip]
+
+            node.vm.provision "shell", path: "#{scripts_prefix}/common_init_script.sh"
+            node.vm.provision "shell", path: machine[:provision_script]
+            node.vm.provision "shell", inline: "sudo ss -tulnp | grep '#{solution_name}'   >> /vagrant/output.txt"
+            node.vm.provision "shell", inline: "iptables -L                                >> /vagrant/output.txt"
+        end
+    end
+end
+
+
+
